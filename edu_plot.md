@@ -81,7 +81,7 @@ top <- ggplot(data=df1, aes(edu.cohort, value, col=area, group=ordinal, shape=ed
 ### Bottom part
 ###
 bottom <-
-ggplot(df, aes(edu.cohort, birthcoho, col=area))+
+ggplot(df, aes(edu.cohort, birthcohort, col=area))+
   geom_point()+ theme_bw()+
   scale_color_manual(values=colpal)+
   theme(panel.grid.minor.y = element_line(color='lightgrey', size=0.1),
