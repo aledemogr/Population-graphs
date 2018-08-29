@@ -1,4 +1,4 @@
-# gender educational differentials in Africa (from Lopus and Frye paper)
+# gender educational differentials in Africa (from Lopus and Frye paper http://journals.sagepub.com/doi/pdf/10.1177/2378023118795956)
 
 rm(list = ls())
 
