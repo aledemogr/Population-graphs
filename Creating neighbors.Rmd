@@ -1,0 +1,171 @@
+---
+title: "Measures of Spatial Autocorrelation in R"
+author: "acarioli"
+date: "17/08/2017"
+output: html_document
+---
+
+One of the first steps in spatial analysis is to create a neighborhood matrix, that is to say create a relationship/connection between each and (ideally!) every polygon. Why? Well, given that the premise for spatial analysis is that neighboring locations are more similar than far away locations, we need to define what is “near”, a set of neighbors for each location capturing such dependence.
+
+There are many ways to define neighbors, and usually, they are not interchangeable, meaning that one neighborhood definition will capture spatial autocorrelation differently from another.
+
+In R the package spdep allows to create a neighbor matrix according to a wide range of definitions: contiguity, radial distance, graph based, and triangulation (and more). There are 3 main and most used neighbors:
+
+A) Contiguity based of order 1 or higher (most used in social sciences)
+
+B) Distance based
+
+C) Graph based
+
+Install and load the maptools and spdep libraries shapefile from North Carolina counties:
+```{r, setup}
+library(maptools)
+library(spdep)
+NC<- readShapePoly(system.file("shapes/sids.shp", package="maptools")[1], IDvar="FIPSNO", proj4string=CRS("+proj=longlat +ellps=clrk66"))
+```
+
+## A. Contiguity based relations 
+are the most used in the presence of irregular polygons  with varying shape and surface, since contiguity ignores distance and focuses instead on the location of an area. The function *poly2nb* allows to create 2 types of contiguity based relations:
+
+### 1. First Order Queen Contiguity 
+FOQ contiguity defines a neighbor when at least one point on the boundary of one polygon is shared with at least one point of its neighbor (common border or corner);
+
+```{r, foq}
+nb.FOQ <- poly2nb(NC, queen=TRUE, row.names=NC$FIPSNO)
+#row.names refers to the unique names of each polygon
+nb.FOQ
+```
+Calling nb.FOQ you get a summary of the neighbor matrix, including the total number of areas/counties, and average number of links.
+
+### 2. First Order Rook Contiguity 
+FOR contiguity does not include corners, only borders, thus comprising only polygons sharing more than one boundary point; 
+```{r, for}
+nb.RK <- poly2nb(NC, queen=F, row.names=NC$FIPSNO)
+nb.RK
+```
+NB: if there is a region without any link, there will be a message like this:
+Neighbour list object:
+Number of regions: 910
+Number of nonzero links: 4906
+Percentage nonzero weights: 0.5924405
+Average number of links: 5.391209
+10 regions with no links:
+1014 3507 3801 8245 9018 10037 22125 30005 390299 390399where you can identify the regions with no links (1014, 3507,…) using which(…), and in R it is possible to “manually” connect them or change the neighbor matrix so that they can be included (such as graph or distance based neighbors).
+Sometimes it also happens that some polygons that have been retouched (it happens a lot with historical maps) may not recognize shared borders and this is where manually setting up neighbors comes in handy (you can’t do that in Geoda).
+
+
+Higher order neighbors are useful when looking at the effect of lags on spatial autocorrelation and in spatial autoregressive models like SAR with a more global spatial autocorrelation:
+```{r, hon}
+nb.SRC <- nblag(nb.RK,2) #second order rook contiguity
+nb.SRC
+```
+## B. Distance based neighbors 
+DBN defines a set of connections between polygons either based on a (1) defined Euclidean distance between centroids dnearneigh or a certain (2) number of neighbors knn2nb (e.g. 5 nearest neighbors);
+```{r, dbn}
+coordNC <- coordinates(NC) #get centroids coordinates
+d05m <-dnearneigh(coordNC, 0, 0.5, row.names=NC$FIPSNO)
+nb.5NN <- knn2nb(knearneigh(coordNC,k=5),row.names=NC$FIPSNO) #set the number of neighbors (here 5)
+d05m
+nb.5NN
+```
+
+**a little trick**: if you want information on neighbor distances whatever the type of neighborhood may be:
+```{r, dist}
+distance <-unlist(nbdists(nb.5NN, coordNC))
+distance
+```
+## C. Graph based (I’ve never used them, but it’s good to know that they exist)
+
+**Delauney triangulation** _tri2nb_ constructs neighbors through Voronoi triangles such that each centroid is a triangle node. As a consequence, DT ensures that every polygon has a neighbor, even in presence of islands. The “problem” with this specification is that it treats our area of study as if it were an island itself, without any neighbors (as if North Carolina were an island with no Virginia or South Carolina)… Therefore, distant points that would not be neighbors (such as Cherokee and Brunswick counties) become such;
+**Gabriel Graph** _gabrielneigh_ is a particular case of the DT, where a and b are two neighboring points/centroids if in the circles passing by  a and b with diameter ab does not lie any other point/centroid;
+**Sphere of Influence** _soi.graph_: twopoints a and b are SOI neighbors if the circles centered on a and b, of radius equal to the a and b nearest neighbour distances, intersect twice. It is a sort of Delauney triangulation without the longest connections;
+**Relative Neighbors** _relativeneigh_ is a particular case of GG. A border belongs to RN if the intersection formed by the two circles centered in a and b with radius ab does not contain any other point. 
+```{r, gbn}
+delTrinb <- tri2nb(coordNC, row.names=NC$FIPSNO) #delauney triangulation
+summary(delTrinb)
+
+GGnb <- graph2nb(gabrielneigh(coordNC), row.names=NC$FIPSNO) #gabriel graph
+summary(GGnb)    
+SOInb <- graph2nb(soi.graph(delTrinb, coordNC), row.names=NC$FIPSNO) #sphere of influence
+summary(SOInb)
+RNnb <- graph2nb(relativeneigh(coordNC), row.names=NC$FIPSNO) #relative graph
+summary(RNnb)
+```
+
+####What to do with all this stuff? …
+
+compute and compare global Moran’s I
+LISA maps
+Variograms and correlograms
+…?
+
+## Global and local measures of spatial autocorrelation
+
+Following on the post Creating neighborhood matrices for Spatial Polygons in R here's a primer to computing Moran's I and creating LISA maps.
+
+Moran's I is "the measure" (although not the only one, but by far the most used) for global autocorrelation, telling how much "overall" a variable is spatially autocorrelated. Spatial autocorrelation is a fancy way to say that neighboring location are somewhat more similar than distant locations. Think about crime in a city neighborhoods, segregation, employment rate by county just to name a few. Spatial autocorrelation is a nuisance as it biases statistical tests. 
+
+### Moran's I
+Moran's I is an inferential statistic tool meaning that it's value is interpreted within the context of its null hypothesis. Under the null hypothesis the variable of interest is randomly distributed, in other words the spatial processes is due to chance.
+
+```{r, read data}
+# Read data from the North Carolina SIDS data ?nc.sids
+nc.sids <- readShapePoly(system.file("etc/shapes/sids.shp", package="spdep")[1],
+  ID="FIPSNO", proj4string=CRS("+proj=longlat +ellps=clrk66"))
+rn <- sapply(slot(nc.sids, "polygons"), function(x) slot(x, "ID"))
+ncCC89_nb <- read.gal(system.file("etc/weights/ncCC89.gal", package="spdep")[1],
+  region.id=rn)
+ncCR85_nb <- read.gal(system.file("etc/weights/ncCR85.gal", package="spdep")[1],
+  region.id=rn)
+```
+```{r, listw}
+# Listwise transformation
+nb.foq.l <- nb2listw(nb.FOQ) #first order queen
+nb.rk.l <- nb2listw(nb.RK) # first order rook
+nb.src.l <- nb2listw(nb.SRC[[2]]) # second order rook
+nb.d05.l <- nb2listw(d05m) # half mile distance
+nb.5nn.l <- nb2listw(nb.5NN) # 5 nearest neighbors
+nb.del.l <- nb2listw(delTrinb) # delauney triangulation
+nb.ggnb.l <- nb2listw(GGnb, zero.policy = T) # gabriel graph
+nb.rnb.l <- nb2listw(RNnb, zero.policy = T) # relative graph
+nb.soi.l <- nb2listw(SOInb, zero.policy = T) #delauney triangulation
+```
+
+```{r, mi}
+moran.test(nc.sids$BIR79, listw = nb.rk.l)
+moran.plot(nc.sids$BIR79, listw = nb.rk.l)
+
+moran.test(nc.sids$BIR79, listw = nb.soi.l)
+moran.plot(nc.sids$BIR79, listw = nb.soi.l)
+```
+
+### Moran's I computed through MC simulation
+```{r, part2}
+n <- 1000 # number of simulations
+mi.mc <- moran.mc(nc.sids$BIR79, listw = nb.soi.l, n)
+mi.mc 
+plot(density(mi.mc$res))
+abline(v=mi.mc$statistic, col="red")
+
+# pseudo-pvalue
+N.greater <- sum(mi.mc$statistic > mi.mc$res)
+p <- min(N.greater + 1, n + 1 - N.greater) / (n + 1)
+p
+```
+### Correlogram
+```{r, corr}
+my.sp.c <- sp.correlogram(SOInb, nc.sids$BIR79, order=8, method="I", style="W")
+plot(my.sp.c)
+```
+### Variogram
+```{r, variogram}
+library(geoR)
+breaks=seq(0,8.2,l=40)
+mydf <- as.data.frame(cbind(coordNC[,1], coordNC[,2], nc.sids$BIR79))
+mydf.geo <- as.geodata(mydf)
+variog.df <- variog(coords = mydf[,1:2], data = mydf.geo$data, breaks = breaks,na.rm = TRUE,estimator.type= "modulus")
+```
+### Local measure of spatial autocorrelation: LISA
+
+
+
