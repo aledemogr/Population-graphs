@@ -9,7 +9,7 @@ output:
 ```{r part1, echo=FALSE}
 library(tidyverse)
 options(scipen = 9)
-setwd("/Users/alessandracarioli/Google Drive/1_WorldPop/WPGlobalInterp/_FINAL_/OUTPUT/_MYDATA_/ALL")
+setwd("/myworkingdirectory/")
 mydt  <-  read_csv("_DHS-MICS_.csv")%>% filter(iso=='UGA')
 ```
 
