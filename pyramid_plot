@@ -1,0 +1,24 @@
+pop.pyr <- function(mydt, mysel, year_sel) {
+    mydt <- dt %>% filter(iso==mysel) %>%
+      mutate(age=if_else(age2==4, 0, if_else(age2==1, 0,age2))) %>% 
+      gather(year, value, 8:28) %>% 
+      filter(year==year_sel) %>% 
+      group_by(iso, sex, age, year) %>% 
+      summarise(value=sum(value)) %>% 
+      mutate(newvalue=if_else(sex=='1', -value, value)) 
+    mybreaks <- c(min(mydt$newvalue)/1000,0,max(mydt$newvalue)/1000)
+    mylabs <- abs(c(round(min(mydt$newvalue)/1000, 1),0,round(max(mydt$newvalue)/1000, 1)))
+     ggplot(mydt, aes(age, newvalue/1000, fill=as.factor(sex))) +
+      geom_col()+
+      coord_flip() +
+      scale_fill_manual(values = c("2" = "red", "1" = "blue"), name="")+
+      scale_y_continuous(breaks=mybreaks, labels = mylabs)+
+       theme_economist_white()+
+      theme(strip.text.x = element_text(size = 6), strip.text = element_text(face="bold", size=9,lineheight=5.0))+
+      labs(title = paste("Population pyramid, ", year_sel),
+           caption = "By AleDemogr    Source: Personal Elaboration",
+           x = NULL,
+           y = "Population (thousands)") +
+      guides(colour = guide_legend(override.aes = list(alpha = 0))) +
+      guides(fill=FALSE)
+}
